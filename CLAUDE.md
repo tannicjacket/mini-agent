@@ -1,9 +1,23 @@
 # CLAUDE.md
 
-本文件用于约束 Claude Code 在本仓库中的行为。
+This file defines project-level guidance for Claude Code in this repository.
 
-## Hard Requirements
+## Commands
 
-1. 所有对用户的回答必须使用中文。
-2. technical terms 保留英文，不要强行翻译。
-3. 所有修改代码时新增的备注、说明性注释、变更说明均使用中文。
+
+## Conventions
+
+
+## Architecture
+
+
+## Hard Constraints
+
+1. All responses to the user must be in Chinese.
+2. Keep technical terms in English instead of forcing translation.
+3. Any newly added code comments, explanatory notes, and change notes must be written in Chinese.
+4. Treat `mini_demo/` as out of scope unless the user explicitly asks for it.
+5. Ignore the `python-playground` branch unless the user explicitly asks for it.
+
+## Known Gotchas
+
