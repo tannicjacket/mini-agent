@@ -18,6 +18,7 @@ if str(SRC_DIR) not in sys.path:
 
 from mini_agent.tools.web import get_page_content
 
+
 load_dotenv()
 
 API_KEY = os.environ.get("API_KEY")
@@ -61,6 +62,23 @@ tools: list[ChatCompletionToolParam] = [
                 "required": ["url"],
             },
         },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_docs",
+            "description": "检索产品知识库，返回与用户问题最相关的文档片段",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "用户的问题或检索语句"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -75,13 +93,21 @@ def get_weather(city):
     # json.dumps 把字典转成 JSON 字符串，ensure_ascii=False 让中文正常显示
     return json.dumps(data, ensure_ascii=False)
 
+def search_docs(query: str) -> str:
+
+    from mini_agent.rag.search import search_documents
+
+    results = search_documents(query, top_k=3)
+    return json.dumps(results, ensure_ascii=False)
+
 # 工具名到函数的映射
 tool_functions = {
     "get_weather": get_weather,
     "get_page_content": get_page_content,
+    "search_docs": search_docs,
 }
 
-SYSTEM_PROMPT = "你是一个友好的助手，可以查询天气。请记住用户告诉你的信息。"
+SYSTEM_PROMPT = "你是一个友好的助手，可以查询天气、抓取网页内容，也可以检索产品知识库。当用户问到订阅、价格、限制、导出、账号、API 规则等文档问题时，优先使用 search_docs 工具。"
 
 messages: list[ChatCompletionMessageParam] = [
     {"role": "system", "content": SYSTEM_PROMPT}]
