@@ -1,17 +1,24 @@
-# build_index.py
+"""构建 demo RAG 索引。"""
+
+from __future__ import annotations
+
 import json
+from pathlib import Path
+
 import numpy as np
 from modelscope import snapshot_download
 from sentence_transformers import SentenceTransformer
 
-# 第一次会从 modelscope 下载约 1.1GB 模型权重，缓存到 ~/.cache/modelscope/
-# 之后 snapshot_download 会直接返回缓存路径，不再下载
-model_dir = snapshot_download("Qwen/Qwen3-Embedding-0.6B")
-model = SentenceTransformer(model_dir)
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+EMBEDDINGS_PATH = DATA_DIR / "doc_embeddings.npy"
+DOCUMENTS_PATH = DATA_DIR / "documents.json"
+MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
 
 
 # 模拟某 SaaS 产品的文档片段
-documents = [
+DOCUMENTS = [
     {
         "title": "Pro 订阅",
         "url": "https://docs.example.com/billing/pro",
@@ -55,15 +62,34 @@ documents = [
 ]
 
 
-# 只对每条文档的 text 字段编码，metadata 不参与向量计算
-texts = [doc["text"] for doc in documents]
-# encode 默认返回 numpy 数组，可以直接传给 np.save
-doc_embeddings = model.encode(texts)
-print(f"文档数：{len(documents)}, 向量形状：{doc_embeddings.shape}")
+def build_index() -> None:
+    """下载 embedding 模型并生成 demo 文档索引。"""
 
-# 把向量和带 metadata 的原始文档一起保存
-# 注意：doc_embeddings 第 i 行向量必须对应 documents 第 i 个 dict，下标要严格一一对应
-np.save("doc_embeddings.npy", doc_embeddings)
-with open("documents.json", "w", encoding="utf-8") as f:
-    json.dump(documents, f, ensure_ascii=False, indent=2)
-print("索引已保存到 doc_embeddings.npy 和 documents.json")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 第一次会从 modelscope 下载约 1.1GB 模型权重，缓存到 ~/.cache/modelscope/
+    # 之后 snapshot_download 会直接返回缓存路径，不再下载
+    model_dir = snapshot_download(MODEL_NAME)
+    model = SentenceTransformer(model_dir)
+
+    # 只对每条文档的 text 字段编码，metadata 不参与向量计算
+    texts = [doc["text"] for doc in DOCUMENTS]
+    doc_embeddings = model.encode(texts)
+    print(f"文档数：{len(DOCUMENTS)}, 向量形状：{doc_embeddings.shape}")
+
+    # 向量和原始文档必须按相同下标一一对应
+    np.save(EMBEDDINGS_PATH, doc_embeddings)
+    with open(DOCUMENTS_PATH, "w", encoding="utf-8") as f:
+        json.dump(DOCUMENTS, f, ensure_ascii=False, indent=2)
+
+    print(f"索引已保存到 {EMBEDDINGS_PATH.name} 和 {DOCUMENTS_PATH.name}")
+
+
+def main() -> None:
+    """命令行入口。"""
+
+    build_index()
+
+
+if __name__ == "__main__":
+    main()
