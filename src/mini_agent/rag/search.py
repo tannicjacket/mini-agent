@@ -10,10 +10,11 @@ from sentence_transformers import SentenceTransformer
 
 # 以当前文件所在目录作为基准，避免从不同目录运行脚本时找不到索引文件
 BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 
 # build_index.py 产出的两个文件路径
-EMBEDDINGS_PATH = BASE_DIR / "doc_embeddings.npy"
-DOCUMENTS_PATH = BASE_DIR / "documents.json"
+EMBEDDINGS_PATH = DATA_DIR / "doc_embeddings.npy"
+DOCUMENTS_PATH = DATA_DIR / "documents.json"
 
 # 检索时必须使用和建索引时相同的 embedding 模型，否则向量空间不一致
 MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
@@ -21,6 +22,11 @@ MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
 
 def load_index() -> tuple[npt.NDArray[np.float32], list[dict]]:
     """加载已经保存好的向量索引和原始文档。"""
+
+    if not EMBEDDINGS_PATH.exists() or not DOCUMENTS_PATH.exists():
+        raise FileNotFoundError(
+            "索引文件不存在，请先运行 `python -m mini_agent.rag.build_index` 生成数据。"
+        )
 
     # 读取所有文档的向量矩阵，形状通常是 (文档数, 向量维度)
     # 这里显式转成 float32，方便后面和 similarity 的类型要求对齐
@@ -65,8 +71,6 @@ def search_documents(query: str, top_k: int = 3) -> list[dict]:
     # 返回结果是一个二维结构，这里取第 0 个查询对应的一行
     similarities = model.similarity(query_embedding, doc_embeddings).numpy()[0]
 
-
-
     # 按相似度从高到低排序，取最相关的 top_k 个文档下标
     top_indices = np.argsort(-similarities)[:top_k]
 
@@ -91,7 +95,7 @@ def main() -> None:
 
     # 命令行至少需要一个查询参数
     if len(sys.argv) < 2:
-        print("用法：python search.py <查询语句>")
+        print("用法：python -m mini_agent.rag.search <查询语句>")
         sys.exit(1)
 
     query = sys.argv[1]
