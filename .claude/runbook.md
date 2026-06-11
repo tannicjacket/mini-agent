@@ -25,6 +25,14 @@ This file records the main ways to run and inspect the current project.
 - The current code expects `API_KEY` to be set
 - `src/mini_agent/mcp/server.py` requires the `mcp` package to be installed
 
+## Harness Docs Workflow
+
+- Commit harness Markdown files on the `harness-doc` branch
+
+## Development Branches
+
+- Perform RAG-related coding work on the `rag` branch
+
 ## Verification
 
 - Prefer checking the default chat entrypoint after changing chat, tools, or agent flow
