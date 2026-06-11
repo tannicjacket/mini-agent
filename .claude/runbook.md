@@ -29,10 +29,6 @@ This file records the main ways to run and inspect the current project.
 
 - Commit harness Markdown files on the `harness-doc` branch
 
-## Development Branches
-
-- Perform RAG-related coding work on the `rag` branch
-
 ## Verification
 
 - Prefer checking the default chat entrypoint after changing chat, tools, or agent flow
@@ -43,8 +39,19 @@ This file records the main ways to run and inspect the current project.
 
 ### Evaluation
 
+No evaluation harness exists yet. Planned for a later phase; do not add commands here until something runnable lands.
+
 ### Data Source
+
+Documents are hardcoded in `src/mini_agent/rag/build_index.py` as a Python list. There is no on-disk source-of-truth directory yet.
 
 ### Embedding Model
 
+- Model: `Qwen/Qwen3-Embedding-0.6B`, downloaded via `modelscope.snapshot_download` on first use.
+- Currently re-instantiated on every `search_documents` call (no process-level cache yet). Expect a per-call warm-up cost until this is changed.
+
 ### Retrieval Interface
+
+- Tool entry: `search_docs(query: str) -> str`, returning `json.dumps([...])`.
+- Underlying call: `search_documents(query, top_k=3)` in `src/mini_agent/rag/search.py`.
+- Direct CLI check: `python src/mini_agent/rag/search.py "your query"`.
