@@ -3,237 +3,199 @@
 一个用于循序渐进学习 Python、tool calling、RAG 和 agent 开发的练习项目。  
 A learning project for gradually exploring Python, tool calling, RAG, and agent development.
 
-## Contents
+## Chatbot Branch Summary / `chatbot` 分支摘要
 
-- [Overview](#overview)
-- [Current Status](#current-status)
-- [Runtime](#runtime)
-- [Project Layout](#project-layout)
-- [RAG Roadmap](#rag-roadmap)
-- [Claude Harness](#claude-harness)
+`chatbot` 分支已经完成并合并到 `main`。这一阶段主要实现了一个最小可运行的 chatbot，以及一个带 tool calling 的 `chatbot_v2`。目前主实现已经收拢到 `src/mini_agent/`，`examples/` 只保留兼容入口。  
+The `chatbot` branch has been completed and merged into `main`. This stage mainly adds a minimal runnable chatbot and a tool-calling `chatbot_v2`. The main implementation now lives under `src/mini_agent/`, while `examples/` is kept only as a compatibility entry layer.
 
-## Overview
+### Scope / 范围说明
 
-当前主代码已经收拢到 `src/mini_agent/`。默认运行路径是本地 `tool calling + RAG` 聊天流程；`examples/` 只保留兼容入口，不再承载主实现。  
-The main code now lives under `src/mini_agent/`. The default runtime is a local `tool calling + RAG` chat flow; `examples/` is kept only as a compatibility layer.
+本节只描述 `chatbot` 这一条开发线的内容。后续如果增加 `mini_rag_bot`、`mini_agent` 或其他练习，可以继续按相同方式追加新的独立小节。  
+This section only describes the `chatbot` development track. Future practice tracks such as `mini_rag_bot`, `mini_agent`, or others can be added as separate sections in the same style.
 
-## Current Status
+### Implemented Features / 已实现功能
 
-### Completed / 已完成
+- 基础单轮/多轮聊天 demo，使用 OpenAI API。  
+  Basic single-turn and multi-turn chatbot demo using the OpenAI API.
 
-- 已完成 `chat / tools / rag / mcp / agent` 的基础目录重构。  
-  The base `chat / tools / rag / mcp / agent` structure has been refactored into place.
+- `chatbot_v2` 支持 tool calling。  
+  `chatbot_v2` supports tool calling.
 
-- 默认运行链路已经统一为 `main.py -> agent/runner.py -> chat/loop.py`。  
-  The default runtime path is now unified as `main.py -> agent/runner.py -> chat/loop.py`.
+- 内置天气查询 mock tool。  
+  Includes a mock weather lookup tool.
 
-- 已接入三个本地工具：`weather`、`web`、`search_docs`。  
-  Three local tools are wired in: `weather`, `web`, and `search_docs`.
+- 新增网页正文抓取工具 `get_page_content`，可提取页面主要文本内容。  
+  Adds a web content tool `get_page_content` that extracts the main text from a page.
 
-- 已完成最小可运行 RAG demo，embedding 模型是 `Qwen/Qwen3-Embedding-0.6B`。  
-  A minimal runnable RAG demo is in place, using `Qwen/Qwen3-Embedding-0.6B`.
+- 新增 `mcp_server.py`，把网页抓取能力注册为 MCP tool 的入口。  
+  Adds `mcp_server.py` as an entrypoint for exposing the web content tool as an MCP tool.
 
-- MCP server 已单独整理到 `src/mini_agent/mcp/server.py`。  
-  The MCP server has been separated into `src/mini_agent/mcp/server.py`.
+### Relevant Paths / 相关路径
 
-### In Progress / 当前进行中
-
-当前正在处理“最小可行 RAG”的下一步问题：先清理 retrieval contract，再考虑质量、存储和评测。  
-The current focus is the next step for the minimal RAG path: clean up the retrieval contract first, then move on to quality, storage, and evaluation.
-
-当前阶段：`RAG Phase A: Retrieval Contract Cleanup`  
-Current phase: `RAG Phase A: Retrieval Contract Cleanup`
-
-当前进度：
-
-- 已完成问题定义和 pre-execution note。  
-  The problem framing and pre-execution note are done.
-
-- 已明确本期目标是改 `RAG -> chat loop` 的接口契约，不是提升检索质量。  
-  The current scope is explicitly the `RAG -> chat loop` contract, not retrieval quality.
-
-- 代码实现还没开始。  
-  The code implementation has not started yet.
-
-### Next / 下一步
-
-- 把 `search_docs` 从“裸 JSON top-k”改成带 `evidence_id`、`abstain` 和 `model_instructions` 的 typed envelope。  
-  Change `search_docs` from raw top-k JSON into a typed envelope with `evidence_id`, `abstain`, and `model_instructions`.
-
-- 更新 prompt，让模型学会在 RAG 路径里引用和拒答。  
-  Update the prompt so the model can cite and abstain properly in the RAG path.
-
-## Runtime
-
-推荐从项目根目录启动，并使用项目自己的 `.venv`。  
-Run from the project root and prefer the project-local `.venv`.
-
-```bash
-source .venv/bin/activate
-python src/mini_agent/main.py
-python src/mini_agent/rag/build_index.py
-python src/mini_agent/rag/search.py "Pro 订阅多少钱"
-python src/mini_agent/mcp/server.py
-```
-
-说明：
-
-- `src/mini_agent/main.py`：当前默认主入口。  
-  `src/mini_agent/main.py`: current default app entrypoint.
-
-- `src/mini_agent/mcp/server.py`：独立 MCP server 入口，不是默认运行链路。  
-  `src/mini_agent/mcp/server.py`: standalone MCP server entrypoint, not the default runtime path.
-
-- `examples/mini_chatbot/`：旧路径兼容入口。  
-  `examples/mini_chatbot/`: legacy compatibility entrypoints.
-
-## Project Layout
-
-### Core App / 核心应用
-
-- [src/mini_agent/main.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/main.py)  
-  项目总入口。  
-  Project entrypoint.
-
-- [src/mini_agent/agent/runner.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/agent/runner.py)  
-  当前默认跑的 agent runner。  
-  The current default agent runner.
-
-- [src/mini_agent/chat/loop.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/chat/loop.py)  
-  基础 chat 与 tool chat 的主循环。  
-  Main loop for both the basic chat and the tool chat.
+#### Chatbot Demos / Chatbot 示例
 
 - [src/mini_agent/chat/client.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/chat/client.py)  
   OpenAI client 初始化。  
   OpenAI client initialization.
 
 - [src/mini_agent/chat/prompts.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/chat/prompts.py)  
-  当前 chat prompt。  
-  Current chat prompts.
+  基础聊天和 tool-calling 聊天使用的 system prompt。  
+  System prompts for both the basic chat and the tool-calling chat.
 
-### Tools / 工具层
+- [src/mini_agent/chat/loop.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/chat/loop.py)  
+  当前 chatbot 主流程，包含基础对话和 tool calling 循环。  
+  Current chatbot main flow, including the basic chat loop and the tool-calling loop.
+
+- [src/mini_agent/agent/runner.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/agent/runner.py)  
+  当前默认 mini agent 入口，现阶段会运行 tool-calling chatbot。  
+  Current default mini-agent entrypoint, which currently runs the tool-calling chatbot.
+
+- [src/mini_agent/main.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/main.py)  
+  项目默认运行入口。  
+  Project default entrypoint.
+
+- [examples/mini_chatbot/chatbot.py](/Users/jiaenxu/Documents/mini-agent/examples/mini_chatbot/chatbot.py)  
+  旧的最小 chatbot 路径，现为兼容壳。  
+  Old basic chatbot path, now kept as a compatibility shim.
+
+- [examples/mini_chatbot/chatbot_v2.py](/Users/jiaenxu/Documents/mini-agent/examples/mini_chatbot/chatbot_v2.py)  
+  旧的 tool-calling chatbot 路径，现为兼容壳。  
+  Old tool-calling chatbot path, now kept as a compatibility shim.
+
+#### Reusable Tools / 可复用工具
+
+- [src/mini_agent/tools/web.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/tools/web.py)  
+  网页抓取与正文提取工具。  
+  Web fetching and page-content extraction tool.
 
 - [src/mini_agent/tools/weather.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/tools/weather.py)  
   天气 mock tool。  
   Weather mock tool.
 
-- [src/mini_agent/tools/web.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/tools/web.py)  
-  网页抓取与正文提取。  
-  Web fetching and page-content extraction.
-
 - [src/mini_agent/tools/docs_search.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/tools/docs_search.py)  
-  RAG 工具边界。  
-  Tool boundary for RAG retrieval.
+  文档检索 tool，内部调用 RAG 检索模块。  
+  Documentation search tool that internally calls the RAG retrieval module.
 
-### RAG / 检索层
+- [src/mini_agent/tools/__init__.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/tools/__init__.py)  
+  工具导出入口。  
+  Tool export entrypoint.
 
-- [src/mini_agent/rag/build_index.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/build_index.py)  
-  构建 demo 索引。  
-  Builds the demo index.
-
-- [src/mini_agent/rag/search.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/search.py)  
-  执行 dense retrieval。  
-  Executes dense retrieval.
-
-- [src/mini_agent/rag/data/documents.json](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/documents.json)  
-  demo 文档数据。  
-  Demo document data.
-
-- [src/mini_agent/rag/data/doc_embeddings.npy](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/doc_embeddings.npy)  
-  demo 向量索引。  
-  Demo embedding index.
-
-### MCP / 协议层
+#### MCP Server / MCP 服务入口
 
 - [src/mini_agent/mcp/server.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/mcp/server.py)  
-  正式 MCP server 入口。  
-  Formal MCP server entrypoint.
+  正式 MCP server 入口，目前注册了 `get_page_content`。  
+  Formal MCP server entrypoint, currently registering `get_page_content`.
 
 - [src/mini_agent/mcp_server.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/mcp_server.py)  
-  旧路径兼容壳。  
-  Legacy compatibility shim.
+  旧路径兼容入口，内部转发到 `src/mini_agent/mcp/server.py`。  
+  Legacy compatibility entrypoint that forwards to `src/mini_agent/mcp/server.py`.
 
-### Compatibility / 兼容入口
+### Quick Run / 快速运行
 
-- [examples/mini_chatbot/chatbot.py](/Users/jiaenxu/Documents/mini-agent/examples/mini_chatbot/chatbot.py)  
-- [examples/mini_chatbot/chatbot_v2.py](/Users/jiaenxu/Documents/mini-agent/examples/mini_chatbot/chatbot_v2.py)  
-- [examples/mini_chatbot/main.py](/Users/jiaenxu/Documents/mini-agent/examples/mini_chatbot/main.py)  
+在项目根目录并激活 `.venv` 后，推荐运行正式入口：  
+From the project root with `.venv` activated, the recommended formal entrypoints are:
 
-### Notes / 学习记录
+```bash
+python src/mini_agent/main.py
+python src/mini_agent/rag/build_index.py
+python src/mini_agent/rag/search.py "Pro 订阅多少钱"
+python src/mini_agent/mcp/server.py
+```
 
-- [docs/rag-note.md](/Users/jiaenxu/Documents/mini-agent/docs/rag-note.md)  
-  当前 RAG 学习线的 pre-execution note / worklog。  
-  The current RAG pre-execution note and worklog.
+说明：  
+Notes:
 
-## RAG Roadmap
+- `src/mini_agent/main.py` 是当前默认主入口。  
+  `src/mini_agent/main.py` is the current default main entrypoint.
 
-### Phase A — Retrieval Contract Cleanup
+- 当前默认入口会运行本地 tool calling + RAG 版本，不是通过 MCP 协议调用工具。  
+  The current default entrypoint runs the local tool-calling + RAG version, not MCP-based tool calling.
 
-当前是这个阶段。目标是把 `search_docs` 从原始 top-k JSON 改成更明确的 retrieval contract，并让 chat 层理解 citation 与 abstain。  
-This is the current phase. The goal is to replace raw top-k JSON with a clearer retrieval contract and make the chat layer understand citation and abstain behavior.
+- `src/mini_agent/mcp/server.py` 是独立的 MCP server 入口。  
+  `src/mini_agent/mcp/server.py` is the standalone MCP server entrypoint.
 
-当前限制：
+如果你还想沿用旧命令，兼容入口仍可运行：  
+If you still want to use the old commands, the compatibility entrypoints still work:
 
-- 只有 document-level 向量，没有 chunking。  
-  Retrieval is still document-level only, with no chunking.
+```bash
+python examples/mini_chatbot/chatbot.py
+python examples/mini_chatbot/chatbot_v2.py
+python examples/mini_chatbot/main.py
+python src/mini_agent/mcp_server.py
+```
 
-- 每次检索都会重新加载 embedding 模型。  
-  The embedding model is reloaded on every retrieval call.
+## RAG Summary / RAG 阶段摘要
 
-- 低相关问题仍会被强制返回 top-k。  
-  Low-relevance queries still force a top-k result.
+当前 RAG 流程已经接入到 `src/mini_agent/main.py` 对应的主聊天流程中，并使用 `Qwen/Qwen3-Embedding-0.6B` 作为 embedding 模型。  
+The current RAG flow has been integrated into the main chat flow behind `src/mini_agent/main.py`, using `Qwen/Qwen3-Embedding-0.6B` as the embedding model.
 
-### Phase B — Model Lifecycle
+### Implemented Features / 已实现功能
 
-### Phase C — Chunking
+- 已完成索引构建脚本。  
+  An index-building script has been implemented.
 
-### Phase D — Minimal Persistent Storage
+- 已完成向量检索脚本。  
+  A vector search script has been implemented.
 
-### Evaluation
+- 当前主聊天流程已支持通过 `search_docs` tool 调用知识库检索。  
+  The current main chat flow now supports knowledge-base retrieval through the `search_docs` tool.
 
-### Hybrid Retrieval
+- 当前 demo 知识库使用 8 条模拟 SaaS 文档。  
+  The current demo knowledge base uses 8 mock SaaS documentation chunks.
 
-### Reranking
+### Relevant Paths / 相关路径
 
-## Claude Harness
+- [src/mini_agent/rag/build_index.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/build_index.py)  
+  构建 embedding 索引。  
+  Builds the embedding index.
 
-这一部分记录的是项目里的 Claude harness 结构，不是业务代码。它的作用是让后续会话能快速恢复项目上下文、运行方式和当前工作阶段。  
-This section describes the Claude harness structure in the repo, not the product code. Its job is to help later sessions recover project context, runtime paths, and the current work phase quickly.
+- [src/mini_agent/rag/search.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/search.py)  
+  执行向量检索。  
+  Performs vector retrieval.
 
-### Memory Files / 记忆文件
+- [src/mini_agent/rag/data/doc_embeddings.npy](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/doc_embeddings.npy)  
+  已生成的 demo 向量索引文件。  
+  Generated demo embedding index file.
 
-- [CLAUDE.md](/Users/jiaenxu/Documents/mini-agent/CLAUDE.md)  
-  项目级协作约束：回复语言、作用域限制、以及 `.claude` 文档的职责边界。  
-  Project-level collaboration rules: response language, scope limits, and the responsibility split inside `.claude`.
+- [src/mini_agent/rag/data/documents.json](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/documents.json)  
+  与索引对应的原始文档数据。  
+  Original document data aligned with the index.
 
-- [.claude/project.md](/Users/jiaenxu/Documents/mini-agent/.claude/project.md)  
-  稳定 project memory，记录长期有效的架构、RAG 现状和未来方向。  
-  Stable project memory for architecture, current RAG shape, and long-term direction.
+- [src/mini_agent/tools/docs_search.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/tools/docs_search.py)  
+  当前 `search_docs` tool 的实现。  
+  Current implementation of the `search_docs` tool.
 
-- [.claude/runbook.md](/Users/jiaenxu/Documents/mini-agent/.claude/runbook.md)  
-  运行手册，记录当前可执行入口、RAG 命令和验证方式。  
-  Runbook for current entrypoints, RAG commands, and verification paths.
+- [src/mini_agent/chat/loop.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/chat/loop.py)  
+  当前主聊天流程通过这里触发 `search_docs`。  
+  The current main chat flow triggers `search_docs` from here.
 
-- [.claude/progress/current.md](/Users/jiaenxu/Documents/mini-agent/.claude/progress/current.md)  
-  短期 working context，记录当前 focus、下一个阶段和暂时风险。  
-  Short-lived working context for the current focus, next phase, and immediate risks.
+### Current Limitations / 当前限制
 
-- [.claude/commands/resume.md](/Users/jiaenxu/Documents/mini-agent/.claude/commands/resume.md)  
-  恢复上下文命令，告诉 Claude 下一次进入仓库时应该先读哪些文件，并输出什么摘要。  
-  Resume command that tells Claude which files to read first and what summary to produce on re-entry.
+- 知识库规模很小，只有 8 条模拟文档，覆盖范围有限。  
+  The knowledge base is very small, with only 8 mock documents and limited coverage.
 
-### Skill / 学习技能
+- 每次调用 `search_docs` 都会重新加载 embedding 模型，响应较慢。  
+  Each `search_docs` call reloads the embedding model, so response time is slow.
 
-- [.claude/skills/learning-note/SKILL.md](/Users/jiaenxu/Documents/mini-agent/.claude/skills/learning-note/SKILL.md)  
-  在开始一个新 module / phase 之前，先写 pre-execution note，帮助把“为什么要这样改”讲清楚。  
-  Writes a pre-execution note before a new module or phase so the change is understandable before coding starts.
+- 当前没有设置相似度阈值，低相关问题也会强行返回 top-k 结果。  
+  There is currently no similarity threshold, so low-relevance queries still return forced top-k results.
 
-- [.claude/skills/learning-note/references/example-phase-a-overview.md](/Users/jiaenxu/Documents/mini-agent/.claude/skills/learning-note/references/example-phase-a-overview.md)  
-  `learning-note` 的校准样例，定义 note 的深度、7-section 结构和语气。  
-  Calibration example for `learning-note`, defining the note depth, 7-section shape, and tone.
+- `build_index.py` 虽然已经规范到 `rag/data/` 输出，但文档内容仍是硬编码的 demo 数据。  
+  Although `build_index.py` now writes cleanly into `rag/data/`, its document content is still hard-coded demo data.
 
-### Local Settings / 本地设置
+- 首次运行依赖下载较大模型文件，对网络稳定性要求较高。  
+  First-time setup depends on downloading a large model file and requires a stable network.
 
-- `.claude/settings.local.json`  
-  可选的本地 Claude 权限配置，通常不会提交到仓库。  
-  Optional local Claude permission configuration, usually not committed to the repository.
+### Planned Improvements / 预计修改方向
+
+- 给检索结果增加相似度阈值，低分时明确返回“未找到足够相关内容”。  
+  Add a similarity threshold so low-confidence retrieval can explicitly return “not enough relevant information found”.
+
+- 把 embedding 模型改成常驻或缓存加载，避免每次检索都重新初始化。  
+  Keep the embedding model warm or cached to avoid reinitializing it on every search.
+
+- 把 `build_index.py` 和 `search.py` 进一步整理成更标准的模块化结构。  
+  Refactor `build_index.py` and `search.py` into a cleaner, more modular structure.
+
+- 后续用真实文档替换当前 mock 文档，提升覆盖范围和实际意义。  
+  Replace the current mock documents with real documents later to improve coverage and usefulness.
