@@ -7,13 +7,39 @@
 - 这里**不是** harness memory，不进入 `CLAUDE.md` / `.claude/project.md` / `.claude/progress/*`。
 - 默认阅读对象是**不熟悉 Python 的我自己**，所以新的语法、术语、概念第一次出现都会解释。
 
+## 目录 / Table of Contents
+
+按 module / phase 浏览；新 phase 的 entry 加在最上面，旧 entry 向下沉。每条 entry 自己展开子节跳转。anchor id 用 phase 前缀（如 `phase-a-sec-X`），避免以后 phase 之间冲突。
+
+- **2026-06-12 — [RAG Phase A: Retrieval Contract Cleanup](#phase-a)**
+  - [0. 概念预热](#phase-a-sec-0)
+    - [0.1 contract（契约）](#phase-a-sec-0-1)
+    - [0.2 envelope（信封 / 外壳）](#phase-a-sec-0-2)
+    - [0.3 `evidence_id` 详解](#phase-a-sec-0-3)
+    - [0.4 abstain（拒答）](#phase-a-sec-0-4)
+    - [0.5 citation（引用）](#phase-a-sec-0-5)
+    - [0.6 Python 语法集中讲](#phase-a-sec-0-6)
+  - [1. Current Architecture](#phase-a-sec-1)
+  - [2. Current Flow](#phase-a-sec-2)
+  - [3. Goal](#phase-a-sec-3)
+  - [4. Planned Changes](#phase-a-sec-4)
+    - [4.1 新增 `rag/contract.py`](#phase-a-sec-4-1)
+    - [4.2 改 `rag/search.py`](#phase-a-sec-4-2)
+    - [4.3 改 `tools/docs_search.py`](#phase-a-sec-4-3)
+    - [4.4 改 `chat/prompts.py`](#phase-a-sec-4-4)
+    - [4.5 abstain 行为设计](#phase-a-sec-4-5)
+    - [4.6 `chat/loop.py` 要不要改](#phase-a-sec-4-6)
+  - [5. Files Likely To Change](#phase-a-sec-5)
+  - [6. What Will Not Change](#phase-a-sec-6)
+  - [7. Questions or Tradeoffs To Confirm](#phase-a-sec-7)
+
 ---
 
-## 2026-06-12 — RAG Phase A: Retrieval Contract Cleanup
+## <a id="phase-a"></a>2026-06-12 — RAG Phase A: Retrieval Contract Cleanup
 
-### 0. 概念预热（不熟悉这一段的话，下面几节会很难懂）
+### <a id="phase-a-sec-0"></a>0. 概念预热（不熟悉这一段的话，下面几节会很难懂）
 
-#### 0.1 什么是 "contract"（契约）
+#### <a id="phase-a-sec-0-1"></a>0.1 什么是 "contract"（契约）
 
 写代码的时候，两段代码要"对话"——一段代码产出一份数据，另一段代码消费它。**它们之间约好的"数据长什么样、字段叫什么、出现什么情况时各自怎么处理"，就叫 contract。**
 
@@ -21,7 +47,7 @@
 
 contract **不一定是写在文档里的**，也可以是隐式的（"大家都这么用"）。Phase A 要做的就是**把现在这个隐式 contract 变成显式 contract**：用一个明确的类型 + 一组明确的规则。
 
-#### 0.2 什么是 "envelope"（信封 / 外壳）
+#### <a id="phase-a-sec-0-2"></a>0.2 什么是 "envelope"（信封 / 外壳）
 
 想象寄信：你不是把白纸直接扔到邮筒里，而是把信纸装进信封，信封外面写收件人、贴邮票、贴"易碎"标签。收件人**先看信封的标签，再决定怎么处理里面的信纸**。
 
@@ -38,7 +64,7 @@ RetrievalResult 信封:
 
 模型先看 `abstain` 这种"信封标签"，再决定要不要相信 `evidence` 里面的内容。**裸列表没有标签，信封有。**
 
-#### 0.3 什么是 `evidence_id`，要详细解释
+#### <a id="phase-a-sec-0-3"></a>0.3 什么是 `evidence_id`，要详细解释
 
 **是什么。** `evidence_id` 是一个**短字符串标签**，挂在每一条检索证据上。本期约定生成成 `"E1"`、`"E2"`、`"E3"` 这种格式，就是字母 E 加一个序号。
 
@@ -71,7 +97,7 @@ Pro 订阅有月度 38 元和年度 388 元两档 [E1]。
 
 **注意，本期只是"约定 + 让模型引用"，不做"检查模型有没有真的引用对"**——那个校验逻辑留给下一阶段。
 
-#### 0.4 什么是 "abstain"（拒答）
+#### <a id="phase-a-sec-0-4"></a>0.4 什么是 "abstain"（拒答）
 
 **abstain** 是一个英文动词，含义偏向"弃权 / 不表态"。在 RAG 里指：**检索阶段发现这次找到的东西都不靠谱，主动告诉模型"这次别用"**。
 
@@ -81,11 +107,11 @@ Pro 订阅有月度 38 元和年度 388 元两档 [E1]。
 
 abstain 的作用就是：检索阶段发现 top-1 相似度低于某个**阈值**（threshold，就是一个数字界限），把 envelope 标记成 `abstain=True`，evidence 列表清空，并在 `abstain_reason` 里写明原因。模型读到这个标签就**主动拒答**："抱歉，知识库里没有足够相关的内容"。
 
-#### 0.5 什么是 "citation"（引用）
+#### <a id="phase-a-sec-0-5"></a>0.5 什么是 "citation"（引用）
 
 跟学术论文里的 "[1] Smith et al."、"[2] Jones 2020" 是一回事——**回答里某句话挂一个标签，标签指向它的出处**。Phase A 里这个标签就是 `[E1]`、`[E2]`，出处就是 envelope 里对应的 Evidence 对象。
 
-#### 0.6 这次会反复用到的 Python 语法
+#### <a id="phase-a-sec-0-6"></a>0.6 这次会反复用到的 Python 语法
 
 **(a) type annotation（类型注解）**
 
@@ -163,7 +189,7 @@ abstain_reason: str | None
 - 数据验证有运行成本（pydantic 每次创建对象都跑校验）；
 - 学习项目优先用标准库的东西，把"第三方依赖"留到真的必要时再加。
 
-### 1. Current Architecture（项目当前结构）
+### <a id="phase-a-sec-1"></a>1. Current Architecture（项目当前结构）
 
 `src/mini_agent/` 下分四块：
 
@@ -182,7 +208,7 @@ main.py
   → rag/search.search_documents（真正去算相似度）
 ```
 
-### 2. Current Flow（当前 RAG 端到端怎么走）
+### <a id="phase-a-sec-2"></a>2. Current Flow（当前 RAG 端到端怎么走）
 
 **用伪代码看一眼**，去掉真实 Python 的细节：
 
@@ -227,7 +253,7 @@ search_docs(query):
 - **没有引用语法约束**：现在的 system prompt 没要求模型"引用来源"，也没说"找不到时拒答"。
 - 原始相似度分数（`score`）直接喂给模型，对模型是噪声——它对这些数字没感觉。
 
-### 3. Goal（这一步具体要做什么）
+### <a id="phase-a-sec-3"></a>3. Goal（这一步具体要做什么）
 
 **核心一句话**：把 RAG 层和 chat 层之间这条"裸 JSON 列表 → 模型自由发挥"的**隐式 contract**，换成一个**显式、可校验、带 abstain 的 envelope**。
 
@@ -258,9 +284,9 @@ search_docs(query)  →  {
 
 也就是说，Phase A 之后**检索召回不会变好**——但模型会"第一次知道自己在做 RAG"，知道要引用证据、知道找不到时该拒答。
 
-### 4. Planned Changes（具体要改什么）
+### <a id="phase-a-sec-4"></a>4. Planned Changes（具体要改什么）
 
-#### 4.1 新增小模块：`src/mini_agent/rag/contract.py`
+#### <a id="phase-a-sec-4-1"></a>4.1 新增小模块：`src/mini_agent/rag/contract.py`
 
 里面放两个 dataclass。**先伪代码看形状**：
 
@@ -310,7 +336,7 @@ class RetrievalResult:
 - `search.py` 里是检索算法的实现，变化频率会更高；
 - 分开能让"改契约"和"改算法"在 git 历史里互不污染。
 
-#### 4.2 改 `src/mini_agent/rag/search.py`
+#### <a id="phase-a-sec-4-2"></a>4.2 改 `src/mini_agent/rag/search.py`
 
 加一个新函数 `retrieve`，保留旧的 `search_documents`（CLI 调试还在用）。
 
@@ -351,7 +377,7 @@ retrieve(query):
 - `ABSTAIN_THRESHOLD = 0.3` 是**全大写模块常量**——Python 里约定俗成"大写 = 不要随便改的常量"。
 - **`raw score` 不进 evidence**：envelope 里没有 `score` 字段，按 `project.md` 的长期方向"不要把原始相似度喂给模型"。
 
-#### 4.3 改 `src/mini_agent/tools/docs_search.py`
+#### <a id="phase-a-sec-4-3"></a>4.3 改 `src/mini_agent/tools/docs_search.py`
 
 ```python
 def search_docs(query: str) -> str:
@@ -362,20 +388,20 @@ def search_docs(query: str) -> str:
 
 **关键点**：函数签名 `search_docs(query: str) -> str` 完全没变。这样 `chat/loop.py` 里那张 `TOOL_FUNCTIONS` 表完全不动——loop 层对契约升级是**透明**的。
 
-#### 4.4 改 `src/mini_agent/chat/prompts.py`
+#### <a id="phase-a-sec-4-4"></a>4.4 改 `src/mini_agent/chat/prompts.py`
 
 在 `TOOL_CHAT_SYSTEM_PROMPT` 里追加两条规则（用中文写）：
 
 1. 调用 `search_docs` 后，如果 envelope 里 `abstain=true`，直接告诉用户"知识库里没有足够相关的内容"，**不要凭弱证据硬答**。
 2. 其余情况，回答里引用证据必须用 `[E1]`、`[E2]` 这种方括号格式；**只能引用 envelope `evidence` 里实际出现过的 id**；不要编造没出现过的 id。
 
-#### 4.5 abstain 行为的设计
+#### <a id="phase-a-sec-4-5"></a>4.5 abstain 行为的设计
 
 - **触发条件**：仅看 top-1 similarity 是否低于 `ABSTAIN_THRESHOLD`。简单、可解释、以后想换更复杂的策略也只改这一行。
 - **触发后**：envelope 里 `evidence=[]`、`abstain=True`，但 `model_instructions` 仍然保留——让模型读到"abstain 时拒答"的规则。
 - **阈值是占位值**，源码注释里要中文标注"未经 eval set 校准，Phase 后期再换"。
 
-#### 4.6 `chat/loop.py` 要不要改？
+#### <a id="phase-a-sec-4-6"></a>4.6 `chat/loop.py` 要不要改？
 
 **本期不动 `loop.py`。**
 
@@ -383,7 +409,7 @@ def search_docs(query: str) -> str:
 
 真正需要 `loop.py` 改动的是**校验**："模型这一轮的回复里 `[E1]` 是不是真的对应到 envelope 里某条 evidence？"。这属于"contract 强制执行"，是 Phase A 之后的事，不在本期范围。Phase A 先**说清契约**，校验留给下一阶段。
 
-### 5. Files Likely To Change（本期会动的文件清单）
+### <a id="phase-a-sec-5"></a>5. Files Likely To Change（本期会动的文件清单）
 
 | 文件 | 改动 |
 |---|---|
@@ -393,7 +419,7 @@ def search_docs(query: str) -> str:
 | `src/mini_agent/chat/prompts.py` | system prompt 末尾追加两条规则（引用语法 + abstain 时拒答） |
 | `.claude/progress/current.md` | Phase A 落地之后再补一两行（非本次） |
 
-### 6. What Will Not Change（明确不做什么）
+### <a id="phase-a-sec-6"></a>6. What Will Not Change（明确不做什么）
 
 **代码层面不动的**：
 
@@ -416,7 +442,7 @@ def search_docs(query: str) -> str:
 - **confidence_band**：把分数分桶（如 high/medium/low）暴露给模型。本期 envelope 字段尽量少。
 - **Protocol / 服务化**：用 Python 的 Protocol（一种"接口"机制）抽象 backend、或者把 RAG 拆成独立服务。两者都是远期考虑。
 
-### 7. Questions or Tradeoffs To Confirm（动手前需要你拍板）
+### <a id="phase-a-sec-7"></a>7. Questions or Tradeoffs To Confirm（动手前需要你拍板）
 
 每条都给了我自己的默认倾向 + 理由，你认同就 yes，不认同直接指出。
 
