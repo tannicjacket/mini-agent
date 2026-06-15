@@ -89,8 +89,7 @@ def run_basic_chat() -> None:
         {"role": "system", "content": BASIC_SYSTEM_PROMPT}
     ]
 
-    print(f"[人设] {BASIC_SYSTEM_PROMPT}")
-    print("输入消息开始聊天，输入 q 退出\n")
+    print(_format_persona_block(BASIC_SYSTEM_PROMPT))
 
     while True:
         user_input = input("你: ")
@@ -105,7 +104,7 @@ def run_basic_chat() -> None:
 
         reply = response.choices[0].message.content or ""
         messages.append({"role": "assistant", "content": reply})
-        print(f"AI: {reply}\n")
+        print(f"\nAI: {reply}\n")
 
 
 def run_tool_chat() -> None:
@@ -116,8 +115,7 @@ def run_tool_chat() -> None:
         {"role": "system", "content": TOOL_CHAT_SYSTEM_PROMPT}
     ]
 
-    print(f"[人设] {TOOL_CHAT_SYSTEM_PROMPT}")
-    print("输入消息开始聊天，输入 q 退出\n")
+    print(_format_persona_block(TOOL_CHAT_SYSTEM_PROMPT))
 
     while True:
         user_input = input("你: ")
@@ -143,7 +141,7 @@ def run_tool_chat() -> None:
                 args = json.loads(tool_call.function.arguments)
                 func = TOOL_FUNCTIONS[tool_call.function.name]
                 result = func(**args)
-                print(f"  [调用工具] {tool_call.function.name}({args}) => {result}")
+                print(_format_tool_call_block(tool_call.function.name, args, result))
                 messages.append(
                     {
                         "role": "tool",
@@ -161,7 +159,71 @@ def run_tool_chat() -> None:
 
         final_reply = assistant_message.content or ""
         messages.append({"role": "assistant", "content": final_reply})
-        print(f"AI: {final_reply}\n")
+        print(f"\nAI: {final_reply}\n")
+
+
+# CLI 排版用的分隔线宽度
+_BAR_WIDTH = 60
+
+
+def _format_persona_block(prompt: str) -> str:
+    """把人设 system prompt 包成带分隔线的独立块，避免和提示语糊在一起。"""
+
+    bar = "─" * _BAR_WIDTH
+    return (
+        f"{bar}\n"
+        f"[人设]\n"
+        f"{prompt}\n"
+        f"{bar}\n"
+        "输入消息开始聊天，输入 q 退出"
+    )
+
+
+def _format_tool_call_block(name: str, args: dict, result: str) -> str:
+    """把一次工具调用整理成多行、易读的 CLI 输出块。
+
+    对 search_docs 的 envelope 做结构化展开（逐条证据分行，丢掉对人类无用的
+    model_instructions）；其它工具的纯文本结果则原样打印、超长截断。
+    """
+
+    lines = ["", f"  [调用工具] {name}  参数 {args}"]
+
+    envelope = _try_parse_envelope(result)
+    if envelope is not None:
+        if envelope.get("abstain"):
+            reason = envelope.get("abstain_reason") or "无足够相关证据"
+            lines.append(f"  检索未命中 (abstain=true)：{reason}")
+        else:
+            evidence = envelope.get("evidence", [])
+            lines.append(f"  检索命中 {len(evidence)} 条证据 (abstain=false)：")
+            for ev in evidence:
+                lines.append(f"    [{ev['evidence_id']}] {ev['title']} — {ev['url']}")
+                lines.append(f"         {ev['text']}")
+    else:
+        lines.append(f"  结果：{_truncate(str(result), 300)}")
+
+    return "\n".join(lines)
+
+
+def _try_parse_envelope(result: str) -> dict | None:
+    """尝试把工具结果解析成 search_docs 的 envelope；不是就返回 None。"""
+
+    try:
+        data = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if isinstance(data, dict) and "evidence" in data and "abstain" in data:
+        return data
+    return None
+
+
+def _truncate(text: str, limit: int) -> str:
+    """超过 limit 个字符就截断并加省略提示，避免一条结果刷屏。"""
+
+    if len(text) <= limit:
+        return text
+    return text[:limit] + " …（已截断）"
 
 
 def _build_assistant_history_message(
