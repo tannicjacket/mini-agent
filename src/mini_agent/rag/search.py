@@ -7,6 +7,12 @@ import numpy.typing as npt
 from modelscope import snapshot_download
 from sentence_transformers import SentenceTransformer
 
+from mini_agent.rag.contract import (
+    MODEL_INSTRUCTIONS,
+    Evidence,
+    RetrievalResult,
+)
+
 
 # 以当前文件所在目录作为基准，避免从不同目录运行脚本时找不到索引文件
 BASE_DIR = Path(__file__).resolve().parent
@@ -18,6 +24,12 @@ DOCUMENTS_PATH = DATA_DIR / "documents.json"
 
 # 检索时必须使用和建索引时相同的 embedding 模型，否则向量空间不一致
 MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
+
+# top-1 相似度低于这个阈值时触发 abstain。**占位值**，未经 eval set
+# 校准；Phase 后期会用标注数据重新选。当前 0.4 来自一次性手测：
+# demo 知识库内合理 query 的 top-1 落在约 0.58 ~ 0.83，跨主题
+# (GraphQL/天气) 落在 0.18 ~ 0.38，0.4 能挡住明显跨题的同时不误伤。
+ABSTAIN_THRESHOLD = 0.4
 
 
 def load_index() -> tuple[npt.NDArray[np.float32], list[dict]]:
@@ -88,6 +100,46 @@ def search_documents(query: str, top_k: int = 3) -> list[dict]:
         )
 
     return results
+
+
+def retrieve(query: str, top_k: int = 3) -> RetrievalResult:
+    """Phase A 的新检索入口：返回带 abstain 信号的 envelope。
+
+    实现思路：复用现有 search_documents 拿 raw top-k，再按 top-1
+    similarity 是否过低决定 abstain。envelope 里**不**带 raw score —
+    project.md 长期方向明确不把相似度暴露给模型。
+    """
+
+    raw = search_documents(query, top_k=top_k)
+
+    # 没有任何结果（理论上索引非空时不会出现）或 top-1 相似度过低
+    # 都走 abstain 分支。一并写明 reason，方便排查。
+    if not raw or raw[0]["score"] < ABSTAIN_THRESHOLD:
+        return RetrievalResult(
+            evidence=[],
+            abstain=True,
+            abstain_reason="top-1 similarity below threshold",
+            model_instructions=MODEL_INSTRUCTIONS,
+        )
+
+    # 按命中顺序生成稳定的 evidence_id："E1"、"E2"、"E3"…
+    # 模型在回答里就靠这个 id 做 [E1] 这种引用。
+    evidence_list = [
+        Evidence(
+            evidence_id=f"E{rank}",
+            title=item["title"],
+            url=item["url"],
+            text=item["text"],
+        )
+        for rank, item in enumerate(raw, start=1)
+    ]
+
+    return RetrievalResult(
+        evidence=evidence_list,
+        abstain=False,
+        abstain_reason=None,
+        model_instructions=MODEL_INSTRUCTIONS,
+    )
 
 
 def main() -> None:
