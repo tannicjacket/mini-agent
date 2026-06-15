@@ -37,30 +37,33 @@ The main code now lives under `src/mini_agent/`. The default runtime is a local 
 
 ### In Progress / 当前进行中
 
-当前正在处理“最小可行 RAG”的下一步问题：先清理 retrieval contract，再考虑质量、存储和评测。  
-The current focus is the next step for the minimal RAG path: clean up the retrieval contract first, then move on to quality, storage, and evaluation.
+当前正在处理“最小可行 RAG”的下一步问题：在 `Phase A/B` 已落地后，把 retrieval unit 从整篇文档推进到更合理的 chunk，并为后续质量校准和评测打基础。  
+The current focus is the next step for the minimal RAG path: after Phase A/B have landed, move the retrieval unit from whole documents to more reasonable chunks and lay the groundwork for later quality calibration and evaluation.
 
-当前阶段：`RAG Phase A: Retrieval Contract Cleanup`  
-Current phase: `RAG Phase A: Retrieval Contract Cleanup`
+当前阶段：`RAG Phase C: Chunking`（规划中）  
+Current phase: `RAG Phase C: Chunking` (planning)
 
 当前进度：
 
-- 已完成问题定义。  
-  The current problem framing is done.
+- `Phase A` 已完成：`search_docs` 不再返回裸 top-k JSON，而是返回带 `evidence_id`、`abstain` 和 `model_instructions` 的 typed envelope。  
+  `Phase A` is complete: `search_docs` no longer returns raw top-k JSON and now returns a typed envelope with `evidence_id`, `abstain`, and `model_instructions`.
 
-- 已明确本期目标是改 `RAG -> chat loop` 的接口契约，不是提升检索质量。  
-  The current scope is explicitly the `RAG -> chat loop` contract, not retrieval quality.
+- `Phase B` 已完成：embedding model 和索引数据已经改成 process-level cache，不再每次检索都重新加载。  
+  `Phase B` is complete: the embedding model and index data now use a process-level cache instead of being reloaded on every retrieval call.
 
-- 代码实现还没开始。  
-  The code implementation has not started yet.
+- 当前仍然是 document-level dense retrieval，chunking、evaluation 和更细的质量优化还没开始。  
+  The system is still document-level dense retrieval; chunking, evaluation, and finer-grained quality work have not started yet.
 
 ### Next / 下一步
 
-- 把 `search_docs` 从“裸 JSON top-k”改成带 `evidence_id`、`abstain` 和 `model_instructions` 的 typed envelope。  
-  Change `search_docs` from raw top-k JSON into a typed envelope with `evidence_id`, `abstain`, and `model_instructions`.
+- 把检索单元从整篇文档推进到更细粒度的 chunk。  
+  Move the retrieval unit from whole documents to finer-grained chunks.
 
-- 更新 prompt，让模型学会在 RAG 路径里引用和拒答。  
-  Update the prompt so the model can cite and abstain properly in the RAG path.
+- 给后续的 `doc_id / chunk_id / chunk metadata` 设计打基础。  
+  Lay the groundwork for future `doc_id / chunk_id / chunk metadata` design.
+
+- 在 chunking 稳定后，再继续做 evaluation、hybrid retrieval 和 reranking。  
+  After chunking is stable, continue with evaluation, hybrid retrieval, and reranking.
 
 ## Runtime
 
@@ -162,27 +165,44 @@ python src/mini_agent/mcp/server.py
 
 ### Phase A — Retrieval Contract Cleanup
 
-当前是这个阶段。目标是把 `search_docs` 从原始 top-k JSON 改成更明确的 retrieval contract，并让 chat 层理解 citation 与 abstain。  
-This is the current phase. The goal is to replace raw top-k JSON with a clearer retrieval contract and make the chat layer understand citation and abstain behavior.
+已完成。`search_docs` 已从原始 top-k JSON 升级为更明确的 retrieval contract，chat 层也已理解 citation 与 abstain。  
+Done. `search_docs` has been upgraded from raw top-k JSON into a clearer retrieval contract, and the chat layer now understands citation and abstain behavior.
 
 当前限制：
 
 - 只有 document-level 向量，没有 chunking。  
   Retrieval is still document-level only, with no chunking.
 
-- 每次检索都会重新加载 embedding 模型。  
-  The embedding model is reloaded on every retrieval call.
-
 - 低相关问题仍会被强制返回 top-k。  
   Low-relevance queries still force a top-k result.
 
 ### Phase B — Model Lifecycle
 
+已完成。embedding model 和索引文件已改成 process-level cache：首次冷启动较慢，后续同一进程内复用。  
+Done. The embedding model and index files now use a process-level cache: the first call is still a cold start, while later calls reuse the same in-process objects.
+
 ### Phase C — Chunking
+
+当前准备进入这个阶段。下一步会把 retrieval unit 从整篇文档推进到更细粒度的 chunk，并逐步补齐稳定 identifier 与 chunk metadata。  
+This is the next planned phase. The retrieval unit will move from whole documents to finer-grained chunks, together with stable identifiers and chunk metadata.
+
+当前目标：
+
+- 把长文档拆成 chunk，避免一个 embedding 混合多个主题。  
+  Split long documents into chunks so one embedding no longer blends multiple topics.
+
+- 让检索命中的 `text` 从“整篇文档”变成“更聚焦的一段 chunk”。  
+  Make retrieved `text` a focused chunk instead of an entire document.
+
+- 为后续 evaluation、hybrid retrieval 和 reranking 铺路。  
+  Prepare the ground for later evaluation, hybrid retrieval, and reranking.
 
 ### Phase D — Minimal Persistent Storage
 
 ### Evaluation
+
+尚未开始。后续会在 chunking 稳定后补一套最小可运行的 evaluation workflow。  
+Not started yet. A minimal runnable evaluation workflow will be added after chunking stabilizes.
 
 ### Hybrid Retrieval
 
