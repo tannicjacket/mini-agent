@@ -1,3 +1,4 @@
+import functools
 import json
 import sys
 from pathlib import Path
@@ -61,14 +62,33 @@ def load_embedding_model() -> SentenceTransformer:
     return SentenceTransformer(model_dir)
 
 
+# Phase B：进程级单例。@functools.cache 把无参函数的返回值缓存在进程内存，
+# 第一次调用真的执行 load_*（模型加载几秒、索引读盘几十 ms），之后直接返回
+# 同一个对象，免去 chat loop 里每次 retrieve 重新加载的开销。
+# 缓存的都是纯内存资源（torch/numpy 张量、tokenizer），进程退出时 OS 整块回收，
+# 不需要 atexit cleanup。本仓库 chat loop 单线程，不涉及 thread safety。
+@functools.cache
+def get_embedding_model() -> SentenceTransformer:
+    """返回进程内共享的 embedding 模型（首次调用时才真正加载）。"""
+
+    return load_embedding_model()
+
+
+@functools.cache
+def get_index() -> tuple[npt.NDArray[np.float32], list[dict]]:
+    """返回进程内共享的向量索引和文档（首次调用时才真正读盘）。"""
+
+    return load_index()
+
+
 def search_documents(query: str, top_k: int = 3) -> list[dict]:
     """对查询语句做向量检索，返回最相关的 top_k 文档。"""
 
-    # 先加载已有索引数据
-    doc_embeddings, documents = load_index()
+    # 先加载已有索引数据（命中进程级缓存后近乎零成本）
+    doc_embeddings, documents = get_index()
 
-    # 再加载和建索引时相同的 embedding 模型
-    model = load_embedding_model()
+    # 再加载和建索引时相同的 embedding 模型（同样走进程级缓存）
+    model = get_embedding_model()
 
     # 把用户问题编码成查询向量
     # 这里使用 prompt_name="query"，表示按查询语句的方式编码
