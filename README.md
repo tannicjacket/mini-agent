@@ -32,35 +32,50 @@ The main code now lives under `src/mini_agent/`. The default runtime is a local 
 - 已完成最小可运行 RAG demo，embedding 模型是 `Qwen/Qwen3-Embedding-0.6B`。  
   A minimal runnable RAG demo is in place, using `Qwen/Qwen3-Embedding-0.6B`.
 
+- 已完成 `RAG Phase A: Retrieval Contract Cleanup`：`search_docs` 不再返回裸 top-k JSON，而是返回带 `evidence_id`、`abstain`、`abstain_reason` 和 `model_instructions` 的 typed envelope。  
+  `RAG Phase A: Retrieval Contract Cleanup` is complete: `search_docs` no longer returns raw top-k JSON and now returns a typed envelope with `evidence_id`, `abstain`, `abstain_reason`, and `model_instructions`.
+
+- 已完成 `RAG Phase B: Model Lifecycle`：embedding model 和索引数据已经改成 process-level cache，同一 Python 进程里不会每次检索都重新加载。  
+  `RAG Phase B: Model Lifecycle` is complete: the embedding model and index data now use a process-level cache and are not reloaded on every retrieval inside the same Python process.
+
+- 已完成 `RAG Phase C: Chunking`：检索单元已经从整篇文档切换到 chunk，索引产物改成 `chunks.json + chunk_embeddings.npy`，并引入稳定的 `doc_id / chunk_id`。  
+  `RAG Phase C: Chunking` is complete: the retrieval unit has moved from whole documents to chunks, the index artifacts are now `chunks.json + chunk_embeddings.npy`, and stable `doc_id / chunk_id` identifiers are in place.
+
 - MCP server 已单独整理到 `src/mini_agent/mcp/server.py`。  
   The MCP server has been separated into `src/mini_agent/mcp/server.py`.
 
 ### In Progress / 当前进行中
 
-当前正在处理“最小可行 RAG”的下一步问题：先清理 retrieval contract，再考虑质量、存储和评测。  
-The current focus is the next step for the minimal RAG path: clean up the retrieval contract first, then move on to quality, storage, and evaluation.
+当前正在准备“最小可行 RAG”的下一步：在 chunk-level retrieval 已跑通后，继续考虑最小持久化存储、evaluation 和更细的质量优化。  
+The current focus is the next step for the minimal RAG path: now that chunk-level retrieval is in place, move on to minimal persistent storage, evaluation, and finer-grained quality work.
 
-当前阶段：`RAG Phase A: Retrieval Contract Cleanup`  
-Current phase: `RAG Phase A: Retrieval Contract Cleanup`
+当前阶段：`RAG Phase D: Minimal Persistent Storage`（规划中）  
+Current phase: `RAG Phase D: Minimal Persistent Storage` (planning)
 
 当前进度：
 
-- 已完成问题定义。  
-  The current problem framing is done.
+- 已完成 retrieval contract 改造。  
+  The retrieval contract refactor is complete.
 
-- 已明确本期目标是改 `RAG -> chat loop` 的接口契约，不是提升检索质量。  
-  The current scope is explicitly the `RAG -> chat loop` contract, not retrieval quality.
+- 已完成进程内 model / index lifecycle 优化。  
+  The in-process model / index lifecycle optimization is complete.
 
-- 代码实现还没开始。  
-  The code implementation has not started yet.
+- 已完成 chunk-level retrieval、稳定 `doc_id / chunk_id`、以及最小 chunk overlap 切分。  
+  Chunk-level retrieval, stable `doc_id / chunk_id`, and minimal chunk-overlap splitting are complete.
+
+- 当前还没有真正的持久化 store、evaluation workflow、hybrid retrieval 或 reranker。  
+  There is still no real persistent store, evaluation workflow, hybrid retrieval, or reranker.
 
 ### Next / 下一步
 
-- 把 `search_docs` 从“裸 JSON top-k”改成带 `evidence_id`、`abstain` 和 `model_instructions` 的 typed envelope。  
-  Change `search_docs` from raw top-k JSON into a typed envelope with `evidence_id`, `abstain`, and `model_instructions`.
+- 继续把当前两文件 artifact（`chunks.json + chunk_embeddings.npy`）往更稳定的持久化形态推进。  
+  Move the current two-file artifact pair (`chunks.json + chunk_embeddings.npy`) toward a more stable persistence shape.
 
-- 更新 prompt，让模型学会在 RAG 路径里引用和拒答。  
-  Update the prompt so the model can cite and abstain properly in the RAG path.
+- 在 chunking 稳定之后补最小可运行的 evaluation workflow。  
+  Add a minimal runnable evaluation workflow after chunking has stabilized.
+
+- 再根据 bad case 决定是否需要 hybrid retrieval 和 reranking。  
+  Then decide whether hybrid retrieval and reranking are needed based on real bad cases.
 
 ## Runtime
 
@@ -85,6 +100,15 @@ python src/mini_agent/mcp/server.py
 
 - `examples/mini_chatbot/`：旧路径兼容入口。  
   `examples/mini_chatbot/`: legacy compatibility entrypoints.
+
+- `search_docs` 现在返回的是 retrieval envelope；chat prompt 已具备 citation / abstain 规则。  
+  `search_docs` now returns a retrieval envelope, and the chat prompt already includes citation / abstain rules.
+
+- `build_index.py` 现在会生成 `chunks.json` 和 `chunk_embeddings.npy`，不再是 document-level 的 `documents.json + doc_embeddings.npy`。  
+  `build_index.py` now generates `chunks.json` and `chunk_embeddings.npy` instead of the old document-level `documents.json + doc_embeddings.npy`.
+
+- 在同一个 Python 进程里，embedding model 和索引会复用 cache；因此默认 chat 入口更能体现 Phase B 的收益。  
+  Within the same Python process, the embedding model and index are reused from cache, so the default chat entrypoint shows the Phase B benefit more clearly.
 
 ## Project Layout
 
@@ -126,21 +150,29 @@ python src/mini_agent/mcp/server.py
 
 ### RAG / 检索层
 
+- [src/mini_agent/rag/contract.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/contract.py)  
+  定义 `RetrievalResult`、`Evidence` 和给模型的固定 retrieval 规则。  
+  Defines `RetrievalResult`, `Evidence`, and the fixed retrieval rules given to the model.
+
+- [src/mini_agent/rag/chunking.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/chunking.py)  
+  负责最小 chunk 切分逻辑（断句、收口、overlap）。  
+  Holds the minimal chunking logic (sentence splitting, greedy packing, overlap).
+
 - [src/mini_agent/rag/build_index.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/build_index.py)  
-  构建 demo 索引。  
-  Builds the demo index.
+  构建 chunk-level demo 索引。  
+  Builds the chunk-level demo index.
 
 - [src/mini_agent/rag/search.py](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/search.py)  
-  执行 dense retrieval。  
-  Executes dense retrieval.
+  执行 chunk-level dense retrieval。  
+  Executes chunk-level dense retrieval.
 
-- [src/mini_agent/rag/data/documents.json](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/documents.json)  
-  demo 文档数据。  
-  Demo document data.
+- [src/mini_agent/rag/data/chunks.json](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/chunks.json)  
+  chunk 记录数据，带 `chunk_id / doc_id / title / url / text`。  
+  Chunk record data with `chunk_id / doc_id / title / url / text`.
 
-- [src/mini_agent/rag/data/doc_embeddings.npy](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/doc_embeddings.npy)  
-  demo 向量索引。  
-  Demo embedding index.
+- [src/mini_agent/rag/data/chunk_embeddings.npy](/Users/jiaenxu/Documents/mini-agent/src/mini_agent/rag/data/chunk_embeddings.npy)  
+  与 `chunks.json` 按下标一一对应的 chunk 向量索引。  
+  The chunk embedding index aligned by array position with `chunks.json`.
 
 ### MCP / 协议层
 
@@ -162,28 +194,65 @@ python src/mini_agent/mcp/server.py
 
 ### Phase A — Retrieval Contract Cleanup
 
-当前是这个阶段。目标是把 `search_docs` 从原始 top-k JSON 改成更明确的 retrieval contract，并让 chat 层理解 citation 与 abstain。  
-This is the current phase. The goal is to replace raw top-k JSON with a clearer retrieval contract and make the chat layer understand citation and abstain behavior.
+已完成。`search_docs` 已经从原始 top-k JSON 改成 typed retrieval envelope；chat prompt 也已经加入 citation 与 abstain 规则。  
+Done. `search_docs` now returns a typed retrieval envelope, and the chat prompt includes citation and abstain rules.
 
-当前限制：
+当前结果：
 
-- 只有 document-level 向量，没有 chunking。  
-  Retrieval is still document-level only, with no chunking.
+- `RetrievalResult` envelope 已落地。  
+  The `RetrievalResult` envelope is now in place.
 
-- 每次检索都会重新加载 embedding 模型。  
-  The embedding model is reloaded on every retrieval call.
+- 证据现在带稳定的 `evidence_id`（`E1`、`E2`...）。  
+  Evidence now carries stable `evidence_id` values (`E1`, `E2`, ...).
 
-- 低相关问题仍会被强制返回 top-k。  
-  Low-relevance queries still force a top-k result.
+- 低相关查询会触发 `abstain`。  
+  Low-relevance queries can now trigger `abstain`.
 
 ### Phase B — Model Lifecycle
 
+已完成。embedding model 和索引文件已改成 process-level cache：首次冷启动较慢，后续同一进程内复用。  
+Done. The embedding model and index files now use a process-level cache: the first call is still a cold start, while later calls reuse the same in-process objects.
+
+当前限制：
+
+- cache 只在单个 Python 进程内生效。  
+  The cache only works within a single Python process.
+
+- CLI 每次启动新进程时，仍然会重新初始化运行时资源。  
+  CLI still reinitializes runtime resources when each invocation starts a fresh process.
+
 ### Phase C — Chunking
+
+已完成。检索单元已经从 document-level 切到 chunk-level，并引入了稳定的 `doc_id / chunk_id`。  
+Done. The retrieval unit has moved from document-level to chunk-level, with stable `doc_id / chunk_id` identifiers.
+
+当前结果：
+
+- `build_index.py` 会先断句、再按 `max_chars + overlap` 规则切块。  
+  `build_index.py` now splits text into chunks using sentence boundaries plus `max_chars + overlap`.
+
+- 向量索引产物已切换到 `chunks.json + chunk_embeddings.npy`。  
+  The index artifacts have been switched to `chunks.json + chunk_embeddings.npy`.
+
+- `search.py` 返回的 raw top-k 结果已带 `chunk_id` 和 `doc_id`。  
+  The raw top-k results returned by `search.py` now include `chunk_id` and `doc_id`.
 
 ### Phase D — Minimal Persistent Storage
 
+当前准备进入这个阶段。下一步是把现在的两文件 artifact 继续推进成更稳定、可演化的最小持久化方案。  
+This is the next planned phase. The next step is to evolve the current two-file artifact setup into a more stable minimal persistence design.
+
 ### Evaluation
+
+尚未开始。后续会在 chunking 稳定后补一套最小可运行的 evaluation workflow。  
+Not started yet. A minimal runnable evaluation workflow will be added after chunking stabilizes.
 
 ### Hybrid Retrieval
 
+尚未开始。当前仍然是单一路径的 dense retrieval。  
+Not started yet. The current retrieval path is still dense-only.
+
 ### Reranking
+
+尚未开始。当前 top-k 结果还没有单独的 reranker 阶段。  
+Not started yet. The current top-k results do not yet have a dedicated reranking stage.
