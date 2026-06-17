@@ -19,9 +19,9 @@ from mini_agent.rag.contract import (
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-# build_index.py 产出的两个文件路径
-EMBEDDINGS_PATH = DATA_DIR / "doc_embeddings.npy"
-DOCUMENTS_PATH = DATA_DIR / "documents.json"
+# build_index.py 产出的两个文件路径（检索单元是 chunk）
+EMBEDDINGS_PATH = DATA_DIR / "chunk_embeddings.npy"
+CHUNKS_PATH = DATA_DIR / "chunks.json"
 
 # 检索时必须使用和建索引时相同的 embedding 模型，否则向量空间不一致
 MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
@@ -34,22 +34,22 @@ ABSTAIN_THRESHOLD = 0.4
 
 
 def load_index() -> tuple[npt.NDArray[np.float32], list[dict]]:
-    """加载已经保存好的向量索引和原始文档。"""
+    """加载已经保存好的 chunk 向量索引和 chunk 记录。"""
 
-    if not EMBEDDINGS_PATH.exists() or not DOCUMENTS_PATH.exists():
+    if not EMBEDDINGS_PATH.exists() or not CHUNKS_PATH.exists():
         raise FileNotFoundError(
             "索引文件不存在，请先运行 `python -m mini_agent.rag.build_index` 生成数据。"
         )
 
-    # 读取所有文档的向量矩阵，形状通常是 (文档数, 向量维度)
+    # 读取所有 chunk 的向量矩阵，形状是 (chunk 数, 向量维度)
     # 这里显式转成 float32，方便后面和 similarity 的类型要求对齐
-    doc_embeddings = np.load(EMBEDDINGS_PATH).astype(np.float32)
+    chunk_embeddings = np.load(EMBEDDINGS_PATH).astype(np.float32)
 
-    # 读取与向量一一对应的原始文档内容和 metadata
-    with open(DOCUMENTS_PATH, "r", encoding="utf-8") as f:
-        documents = json.load(f)
+    # 读取与向量一一对应的 chunk 记录（含 chunk_id / doc_id / title / url / text）
+    with open(CHUNKS_PATH, "r", encoding="utf-8") as f:
+        chunks = json.load(f)
 
-    return doc_embeddings, documents
+    return chunk_embeddings, chunks
 
 
 def load_embedding_model() -> SentenceTransformer:
@@ -82,10 +82,10 @@ def get_index() -> tuple[npt.NDArray[np.float32], list[dict]]:
 
 
 def search_documents(query: str, top_k: int = 3) -> list[dict]:
-    """对查询语句做向量检索，返回最相关的 top_k 文档。"""
+    """对查询语句做向量检索，返回最相关的 top_k 个 chunk。"""
 
     # 先加载已有索引数据（命中进程级缓存后近乎零成本）
-    doc_embeddings, documents = get_index()
+    chunk_embeddings, chunks = get_index()
 
     # 再加载和建索引时相同的 embedding 模型（同样走进程级缓存）
     model = get_embedding_model()
@@ -99,23 +99,26 @@ def search_documents(query: str, top_k: int = 3) -> list[dict]:
         convert_to_numpy=True,
     ).astype(np.float32)
 
-    # 计算查询向量与每条文档向量的相似度
+    # 计算查询向量与每个 chunk 向量的相似度
     # 返回结果是一个二维结构，这里取第 0 个查询对应的一行
-    similarities = model.similarity(query_embedding, doc_embeddings).numpy()[0]
+    similarities = model.similarity(query_embedding, chunk_embeddings).numpy()[0]
 
-    # 按相似度从高到低排序，取最相关的 top_k 个文档下标
+    # 按相似度从高到低排序，取最相关的 top_k 个 chunk 下标
     top_indices = np.argsort(-similarities)[:top_k]
 
     results = []
     for idx in top_indices:
         # 把结果整理成结构化数据，方便命令行打印，也方便以后被 chatbot/agent 直接调用
+        chunk = chunks[idx]
         results.append(
             {
                 "index": int(idx),
                 "score": float(similarities[idx]),
-                "title": documents[idx]["title"],
-                "url": documents[idx]["url"],
-                "text": documents[idx]["text"],
+                "chunk_id": chunk["chunk_id"],
+                "doc_id": chunk["doc_id"],
+                "title": chunk["title"],
+                "url": chunk["url"],
+                "text": chunk["text"],
             }
         )
 
@@ -175,7 +178,7 @@ def main() -> None:
 
     print(f"\n查询：{query}")
     for rank, item in enumerate(results, 1):
-        print(f"  Top {rank} 相似度 {item['score']:.3f} 下标 {item['index']}")
+        print(f"  Top {rank} 相似度 {item['score']:.3f} chunk {item['chunk_id']}")
         print(f"    标题：{item['title']}")
         print(f"    链接：{item['url']}")
         print(f"    片段：{item['text']}")
